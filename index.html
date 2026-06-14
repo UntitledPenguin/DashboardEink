@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kindle Daily Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="dashboard" aria-label="Daily dashboard">
+      <header class="masthead">
+        <p id="dashboard-date">Sunday, 14 June</p>
+        <h1>Daily Dashboard</h1>
+      </header>
+
+      <section class="panel weather-block" aria-label="Weather">
+        <p class="eyebrow">Weather</p>
+        <div class="current-weather">
+          <div class="weather-icon" aria-hidden="true">
+            <svg viewBox="0 0 96 96" role="img">
+              <path d="M28 57h38a16 16 0 0 0 0-32 25 25 0 0 0-47 9 12 12 0 0 0 9 23z" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M48 48c-8 10-12 16-12 23a12 12 0 0 0 24 0c0-7-4-13-12-23z" fill="none" stroke="currentColor" stroke-width="7" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div>
+            <div class="temperature"><span id="current-temp">19</span><span class="unit">&deg;C</span></div>
+            <p id="weather-summary" class="summary">Light rain, calm wind</p>
+          </div>
+        </div>
+
+        <div id="forecast" class="forecast" aria-label="Hourly forecast"></div>
+      </section>
+
+      <section class="panel calendar-block" aria-label="Month progress">
+        <div class="calendar-heading">
+          <div>
+            <p class="eyebrow">Month Progress</p>
+            <h2 id="month-label">June 2026</h2>
+          </div>
+          <p id="month-progress-copy" class="progress-copy">14 / 30 days passed</p>
+        </div>
+        <div class="weekday-row" aria-hidden="true">
+          <span>Mon</span>
+          <span>Tue</span>
+          <span>Wed</span>
+          <span>Thu</span>
+          <span>Fri</span>
+          <span>Sat</span>
+          <span>Sun</span>
+        </div>
+        <div id="month-heatmap" class="month-heatmap"></div>
+      </section>
+
+      <section class="panel todo-block" aria-label="Todo list">
+        <div class="todo-heading">
+          <p class="eyebrow">Dida 365</p>
+          <h2>Today</h2>
+        </div>
+        <ul id="todo-list" class="todo-list"></ul>
+      </section>
+
+      <section class="panel exchange-block" aria-label="Exchange rates">
+        <p class="eyebrow">Exchange</p>
+        <div id="exchange-rates" class="exchange-grid"></div>
+      </section>
+
+      <footer class="refresh-line">
+        Refreshed at <span id="refreshed-at">13:01</span>
+      </footer>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
