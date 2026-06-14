@@ -1,39 +1,48 @@
 # Kindle Daily Dashboard Architecture
 
-This first draft is intentionally static. The UI reads from `dashboardData` in `app.js`, and each data group mirrors a future backend adapter.
+The frontend is static and reads normalized data from `/api/dashboard`. The Vercel API gathers weather, exchange rates, and Dida365 calendar items, then returns one dashboard payload.
 
 ## Frontend
 
-- `index.html`: semantic shell for weather, exchange rates, Dida 365 tasks, and month progress.
-- `styles.css`: Kindle/e-ink friendly portrait layout for a `1080x1440` viewport, with a pure white background, monochrome colors, strong text, and a mobile fallback.
+- `index.html`: semantic shell for weather, exchange rates, Dida365 tasks, and month progress.
+- `styles.css`: portrait e-ink layout for a `1080x1440` viewport, with pure white background, monochrome colors, Apple-style CJK text, and mono dashboard labels.
 - `app.js`: fetches `/api/dashboard` when hosted on Vercel and falls back to placeholder data if the API is unavailable.
-- `api/dashboard.js`: Vercel serverless API that fetches weather, exchange rates, and Dida 365 calendar tasks.
+- `README.md`: setup and customization guide for people forking the repo.
 
-## Future Backend Shape
+## Backend
 
-Recommended response from `GET /api/dashboard`:
+- `api/dashboard.js`: Vercel serverless API that fetches weather, exchange rates, and Dida365 calendar tasks.
+- Weather adapter: fetches current temperature and daily summary for `WEATHER_LATITUDE`, `WEATHER_LONGITUDE`, and `DASHBOARD_TIME_ZONE`.
+- Exchange adapter: fetches the comma-separated `EXCHANGE_PAIRS`, defaulting to `GBP/CNY,GBP/USD,USD/CNY`.
+- Dida365 adapter: reads today's items from the `DIDA_ICS_URL` calendar feed and normalizes them to `{ title, meta, done }`. If no items are found, it returns `没有task了 放松一下`.
+- Month progress adapter: computes the current year, month, day of month, month label, and number of days in the month.
+
+## Dashboard Payload
+
+`GET /api/dashboard` returns:
 
 ```json
 {
   "profile": {
-    "title": "Daily Dashboard",
-    "dateLabel": "Sunday, 14 June",
+    "title": "User's Dashboard",
+    "dateLabel": "Sunday 14 June",
     "refreshedAt": "13:01"
   },
   "weather": {
+    "locationLabel": "London",
     "temperatureC": 19,
-    "summary": "Light rain, calm wind",
+    "summary": "Partly cloudy",
     "hourly": [
-      { "time": "1 PM", "condition": "cloud", "temperatureC": 18 }
+      { "time": "Now", "condition": "cloud", "temperatureC": 19 }
     ]
   },
   "exchangeRates": [
-    { "pair": "USD/CNY", "value": "7.18" },
-    { "pair": "GBP/CNY", "value": "9.69" },
-    { "pair": "GBP/USD", "value": "1.35" }
+    { "pair": "GBP/CNY", "value": "9.06" },
+    { "pair": "GBP/USD", "value": "1.34" },
+    { "pair": "USD/CNY", "value": "6.76" }
   ],
   "todos": [
-    { "title": "Review dashboard layout", "meta": "Design", "done": false }
+    { "title": "洗衣服", "meta": "22:00", "done": false }
   ],
   "monthProgress": {
     "year": 2026,
@@ -45,17 +54,24 @@ Recommended response from `GET /api/dashboard`:
 }
 ```
 
-## Backend Adapters To Add Later
+## Customization
 
-- Weather adapter: fetch current temperature and a short hourly forecast for the configured home location.
-- Exchange adapter: fetch USD, CNY, and GBP rates once per day and derive the three visible pairs.
-- Dida 365 adapter: read today's items from the `DIDA_ICS_URL` calendar feed and normalize them to `{ title, meta, done }`. If no items are found, return `没有task了 放松一下`.
-- Month progress adapter: compute the current year, month, day of month, month label, and number of days in the month.
+Runtime customization is done with Vercel environment variables:
+
+- `DASHBOARD_OWNER_NAME`
+- `WEATHER_LOCATION_LABEL`
+- `WEATHER_LATITUDE`
+- `WEATHER_LONGITUDE`
+- `DASHBOARD_TIME_ZONE`
+- `EXCHANGE_PAIRS`
+- `DIDA_ICS_URL`
+
+See `README.md` for examples.
 
 ## Kindle Notes
 
 - Target portrait Kindle rendering at `1080x1440`.
 - Keep the page monochrome, pure white, and animation-free.
-- Use a long refresh interval, for example every 15-60 minutes, to reduce e-ink redraws.
+- The frontend reloads once per hour.
+- The API response uses `s-maxage=3600, stale-while-revalidate=600`.
 - The calendar heatmap currently shows days passed in the month, not task completion status.
-- The static prototype can be opened directly from `index.html`; the backend version should be served from a tiny local web server or hosted endpoint.

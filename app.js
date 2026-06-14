@@ -1,10 +1,11 @@
 const fallbackData = {
   profile: {
-    title: "Daily Dashboard",
+    title: "User's Dashboard",
     dateLabel: "Sunday, 14 June",
     refreshedAt: "13:01",
   },
   weather: {
+    locationLabel: "London",
     temperatureC: 19,
     summary: "Light rain, calm wind",
     hourly: [
@@ -51,7 +52,10 @@ const icons = {
 function renderDashboard(data) {
   document.title = data.profile.title;
   document.getElementById("dashboard-date").textContent = data.profile.dateLabel;
+  document.getElementById("dashboard-title").textContent = data.profile.title;
   document.getElementById("refreshed-at").textContent = data.profile.refreshedAt;
+  document.getElementById("weather-heading").textContent =
+    `${data.weather.locationLabel || "Weather"} Weather`;
   document.getElementById("current-temp").textContent = data.weather.temperatureC;
   document.getElementById("weather-summary").textContent = data.weather.summary;
 

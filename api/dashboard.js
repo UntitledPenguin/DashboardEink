@@ -1,11 +1,16 @@
 const DIDA_ICS_URL = process.env.DIDA_ICS_URL;
 
 const FALLBACK_TODO = "没有task了 放松一下";
-const LONDON_TIME_ZONE = "Europe/London";
+const DASHBOARD_OWNER_NAME = process.env.DASHBOARD_OWNER_NAME || "User";
+const WEATHER_LOCATION_LABEL = process.env.WEATHER_LOCATION_LABEL || "London";
+const WEATHER_LATITUDE = process.env.WEATHER_LATITUDE || "51.5072";
+const WEATHER_LONGITUDE = process.env.WEATHER_LONGITUDE || "-0.1276";
+const DASHBOARD_TIME_ZONE = process.env.DASHBOARD_TIME_ZONE || "Europe/London";
+const EXCHANGE_PAIRS = parseExchangePairs(process.env.EXCHANGE_PAIRS || "GBP/CNY,GBP/USD,USD/CNY");
 
 module.exports = async function handler(req, res) {
   try {
-    const [weather, exchangeRates, todos] = await Promise.all([
+    const [weather, exchangeRates, todoResult] = await Promise.all([
       fetchWeather(),
       fetchExchangeRates(),
       fetchTodayTodos(),
@@ -15,15 +20,18 @@ module.exports = async function handler(req, res) {
     res.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate=600");
     res.status(200).json({
       profile: {
-        title: "Daily Dashboard",
+        title: `${DASHBOARD_OWNER_NAME}'s Dashboard`,
         dateLabel: formatDateLabel(now),
         refreshedAt: formatTime(now),
       },
       weather,
       exchangeRates,
-      todos,
+      todos: todoResult.todos,
       monthProgress: getMonthProgress(now),
       generatedAt: now.toISOString(),
+      diagnostics: {
+        todos: todoResult.diagnostics,
+      },
     });
   } catch (error) {
     res.status(500).json({
@@ -35,7 +43,7 @@ module.exports = async function handler(req, res) {
 
 async function fetchWeather() {
   const response = await fetch(
-    "https://api.open-meteo.com/v1/forecast?latitude=51.5072&longitude=-0.1276&current=temperature_2m,apparent_temperature,precipitation,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Europe%2FLondon"
+    `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(WEATHER_LATITUDE)}&longitude=${encodeURIComponent(WEATHER_LONGITUDE)}&current=temperature_2m,apparent_temperature,precipitation,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=${encodeURIComponent(DASHBOARD_TIME_ZONE)}`
   );
   if (!response.ok) throw new Error(`Open-Meteo failed: ${response.status}`);
 
@@ -46,6 +54,7 @@ async function fetchWeather() {
   const temperature = Math.round(data.current.temperature_2m);
 
   return {
+    locationLabel: WEATHER_LOCATION_LABEL,
     temperatureC: temperature,
     apparentC: Math.round(data.current.apparent_temperature),
     weatherCode: data.current.weather_code,
@@ -63,26 +72,32 @@ async function fetchWeather() {
 }
 
 async function fetchExchangeRates() {
-  const [gbpResponse, usdResponse] = await Promise.all([
-    fetch("https://api.frankfurter.app/latest?base=GBP"),
-    fetch("https://api.frankfurter.app/latest?base=USD"),
-  ]);
-  if (!gbpResponse.ok) throw new Error(`Frankfurter GBP failed: ${gbpResponse.status}`);
-  if (!usdResponse.ok) throw new Error(`Frankfurter USD failed: ${usdResponse.status}`);
+  const bases = [...new Set(EXCHANGE_PAIRS.map((pair) => pair.base))];
+  const responses = await Promise.all(
+    bases.map(async (base) => {
+      const response = await fetch(`https://api.frankfurter.app/latest?base=${encodeURIComponent(base)}`);
+      if (!response.ok) throw new Error(`Frankfurter ${base} failed: ${response.status}`);
+      return [base, await response.json()];
+    })
+  );
+  const dataByBase = Object.fromEntries(responses);
 
-  const gbp = await gbpResponse.json();
-  const usd = await usdResponse.json();
-
-  return [
-    { pair: "GBP/CNY", value: formatRate(gbp.rates.CNY) },
-    { pair: "GBP/USD", value: formatRate(gbp.rates.USD) },
-    { pair: "USD/CNY", value: formatRate(usd.rates.CNY) },
-  ];
+  return EXCHANGE_PAIRS.map((pair) => ({
+    pair: `${pair.base}/${pair.quote}`,
+    value: formatRate(dataByBase[pair.base].rates[pair.quote]),
+  }));
 }
 
 async function fetchTodayTodos() {
   if (!DIDA_ICS_URL) {
-    return [{ title: FALLBACK_TODO, meta: "Dida 365", done: false }];
+    return {
+      todos: [{ title: FALLBACK_TODO, meta: "DIDA_ICS_URL missing", done: false }],
+      diagnostics: {
+        icsConfigured: false,
+        eventCount: 0,
+        matchedCount: 0,
+      },
+    };
   }
 
   const response = await fetch(DIDA_ICS_URL.replace(/^webcal:\/\//, "https://"));
@@ -90,8 +105,9 @@ async function fetchTodayTodos() {
 
   const ics = await response.text();
   const todayKey = formatDateKey(new Date());
-  const todos = parseIcsEvents(ics)
-    .filter((event) => occursOnDate(event, todayKey))
+  const events = parseIcsEvents(ics);
+  const matchedEvents = events.filter((event) => occursOnDate(event, todayKey));
+  const todos = matchedEvents
     .map((event) => ({
       title: event.SUMMARY || FALLBACK_TODO,
       meta: formatTodoMeta(event),
@@ -99,10 +115,24 @@ async function fetchTodayTodos() {
     }));
 
   if (todos.length === 0) {
-    return [{ title: FALLBACK_TODO, meta: "Dida 365", done: false }];
+    return {
+      todos: [{ title: FALLBACK_TODO, meta: "No dated Dida items today", done: false }],
+      diagnostics: {
+        icsConfigured: true,
+        eventCount: events.length,
+        matchedCount: 0,
+      },
+    };
   }
 
-  return todos.slice(0, 6);
+  return {
+    todos: todos.slice(0, 6),
+    diagnostics: {
+      icsConfigured: true,
+      eventCount: events.length,
+      matchedCount: matchedEvents.length,
+    },
+  };
 }
 
 function parseIcsEvents(ics) {
@@ -187,7 +217,7 @@ function getMonthProgress(date) {
     monthLabel: new Intl.DateTimeFormat("en-GB", {
       month: "long",
       year: "numeric",
-      timeZone: LONDON_TIME_ZONE,
+      timeZone: DASHBOARD_TIME_ZONE,
     }).format(date),
     today: Number(parts.day),
     daysInMonth: new Date(Date.UTC(year, month, 0)).getUTCDate(),
@@ -199,7 +229,7 @@ function formatDateLabel(date) {
     weekday: "long",
     day: "2-digit",
     month: "long",
-    timeZone: LONDON_TIME_ZONE,
+    timeZone: DASHBOARD_TIME_ZONE,
   }).format(date);
 }
 
@@ -208,7 +238,7 @@ function formatTime(date) {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-    timeZone: LONDON_TIME_ZONE,
+    timeZone: DASHBOARD_TIME_ZONE,
   }).format(date);
 }
 
@@ -222,7 +252,7 @@ function getLondonParts(date) {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-    timeZone: LONDON_TIME_ZONE,
+    timeZone: DASHBOARD_TIME_ZONE,
   }).formatToParts(date);
   return Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
 }
@@ -245,6 +275,16 @@ function decodeIcsText(value) {
 
 function formatRate(value) {
   return Number(value).toFixed(2);
+}
+
+function parseExchangePairs(value) {
+  return value.split(",").map((item) => {
+    const [base, quote] = item.trim().toUpperCase().split("/");
+    if (!base || !quote) {
+      throw new Error(`Invalid exchange pair: ${item}`);
+    }
+    return { base, quote };
+  });
 }
 
 function getIconCondition(code) {
